@@ -42,10 +42,10 @@ class DofFilter
 		float focus, focalLen, aperture, sensorDist;
 		float near, far;
 		Image *kernel;
-		int		ktex;
 		
 		inline void 	filterPixelOnBuffer( float r, int x, int y );
 		inline double 	kernelVal(int x, int y);
+		inline double 	biInterpolKernel( int s, int t, double kratio );
 		void 			printKernel();
 
 };
