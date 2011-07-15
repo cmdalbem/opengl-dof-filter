@@ -1,5 +1,3 @@
-#include <GL/gl.h>
-#include <GL/glu.h>
 #include <GL/glut.h>
 #include <stdlib.h>
 #include <math.h>
@@ -37,7 +35,6 @@ void DofFilter::loadKernelBMP(const char* filename)
 	if(kernel) free(kernel);
 	
 	kernel = loadBMP(filename);
-	ktex = loadTexture(kernel);
 	//printKernel();		
 }
 
@@ -50,7 +47,6 @@ void DofFilter::printKernel()
 		printf("\n");
 	}
 }
-	
 
 inline double DofFilter::kernelVal(int x, int y)
 {
@@ -60,10 +56,18 @@ inline double DofFilter::kernelVal(int x, int y)
 	return val<0 ? (val+256)/256. : val/256.;
 }
 
+double DofFilter::biInterpolKernel( int s, int t, double kratio )
+{
+	return  0.25*kernelVal(floor(s*kratio),floor(t*kratio)) +
+			0.25*kernelVal(ceil(s*kratio),ceil(t*kratio)) +
+			0.25*kernelVal(ceil(s*kratio),floor(t*kratio)) +
+			0.25*kernelVal(floor(s*kratio),ceil(t*kratio));
+}
+
 inline void DofFilter::filterPixelOnBuffer( float r, int x, int y )
 {
 	static int nx, ny, s, t;
-	static double kratio, nr, ng, nb;
+	static double kratio, nr, ng, nb, interpol, area;
 	static int i, j;
 	static int maxPts;
 	
@@ -81,31 +85,35 @@ inline void DofFilter::filterPixelOnBuffer( float r, int x, int y )
 		int nxv[maxPts], nyv[maxPts], pts=0;
 		float kval[maxPts];
 	
+		area = 0;
+	
 		// Convolution by Image Kernel
-		//if(0) {
 		if(useKernel && kernel!=NULL) {
 			
 			//ratio for linear super/subsampling from kernel image
 			kratio = kernel->width/(2*r);
 			
-			for(i=-ceil(r), s=0; i<=floor(r); i++, s++) {
-				for(j=-floor(r), t=0; j<=ceil(r); j++, t++) {
+			for(i=-ceil(r), s=0; i<floor(r); i++, s++) {
+				for(j=-floor(r), t=0; j<ceil(r); j++, t++) {
 					nx = x+i;
 					ny = y+j;
 					if( nx >= 0 && nx < WIDTH && 
 						ny >= 0 && ny < HEIGHT)
-						//printf("%i ",kernelVal((int)(s*kratio),(int)(t*kratio)));
-						//printf("%i,%i ",(int)(s*kratio),(int)(t*kratio));
-						if(kernelVal(s*kratio,t*kratio)) {
+						//interpol = biInterpolKernel(s,t,kratio);
+						interpol = kernelVal((int)s*kratio,(int)t*kratio);
+						//printf("%i ",(int)round(interpol));
+						if(interpol) {
 							nxv[pts] = nx;
 							nyv[pts] = ny;
-							kval[pts] = 1;//kernelVal(s*kratio,t*kratio);
+							kval[pts] = interpol;
 							pts++;
+							area += interpol;
 						}
 				}
 				//printf("\n");
 			}
 			//printf("\n");
+			
 		}
 		else
 		// Convolution by Circle Equation
@@ -124,19 +132,22 @@ inline void DofFilter::filterPixelOnBuffer( float r, int x, int y )
 							else
 								contrib[pts] = 1./MPOS(sb,nx,ny);*/
 							pts++;
+							area++;
 						}
 					}
 				}
 				
-		nr = MPOS(fb1,x,y).r/pts;
-		ng = MPOS(fb1,x,y).g/pts;
-		nb = MPOS(fb1,x,y).b/pts;
+		
+		nr = MPOS(fb1,x,y).r/area;
+		ng = MPOS(fb1,x,y).g/area;
+		nb = MPOS(fb1,x,y).b/area;
 			
 		if(boostBokeh && r>6) {
 			static double mono, boost, variance;
 			mono = 0.3*MPOS(fb1,x,y).r + 0.59*MPOS(fb1,x,y).g + 0.11*MPOS(fb1,x,y).b;
-			boost = 1./(104.-mono*99.) + (1. - 1./104);
-			variance = r/(100.-r) + 1;
+			boost = 1./(95.-mono*88) + (1. - 1./90);
+			//DEBUG_VAR(boost);
+			variance = r/(270.-r*3.) + 1;
 			//variance = 1./(210.-r*4.) + (1. - 1./210);
 			//variance = r*r/500 + 1;
 			
